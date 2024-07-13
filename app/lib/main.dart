@@ -19,7 +19,7 @@ class MyApp extends StatelessWidget {
       ),
       routes: {
         '/': (context) => const MyHomePage(title: 'Home'),
-        '/capture': (context) => const CaptureScreen(),
+        '/capture': (context) => const CameraPage(),
       },
     );
   }

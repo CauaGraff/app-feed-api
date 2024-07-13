@@ -1,143 +1,188 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'dart:io';
 
-class CaptureScreen extends StatefulWidget {
-  const CaptureScreen({Key? key}) : super(key: key);
+class CameraPage extends StatefulWidget {
+  const CameraPage({Key? key}) : super(key: key);
 
   @override
-  _CaptureScreenState createState() => _CaptureScreenState();
+  State<CameraPage> createState() => _CameraPageState();
 }
 
-class _CaptureScreenState extends State<CaptureScreen> {
-  late CameraController _cameraController;
-  late List<CameraDescription> cameras;
-  bool _isCameraInitialized = false;
-  XFile? _image;
-  static const String usuario = 'Default User'; // Defina o usuário aqui
-  double? _latitude;
-  double? _longitude;
+class _CameraPageState extends State<CameraPage> {
+  List<CameraDescription> cameras = [];
+  CameraController? controller;
+  XFile? imagem;
+  Size? size;
+  Position? position;
 
   @override
   void initState() {
     super.initState();
-    _initializeCamera();
+    _loadCameras();
   }
 
-  Future<void> _initializeCamera() async {
-    cameras = await availableCameras();
-    _cameraController = CameraController(cameras[0], ResolutionPreset.high);
-    await _cameraController.initialize();
-    setState(() {
-      _isCameraInitialized = true;
-    });
-    // Automatically capture the image when the camera is ready
-    _getImage();
-  }
-
-  Future<void> _getImage() async {
+  _loadCameras() async {
     try {
-      if (!_isCameraInitialized) return;
-      final XFile image = await _cameraController.takePicture();
-      setState(() {
-        _image = image;
-      });
-    } catch (e) {
-      print('Error capturing image: $e');
+      cameras = await availableCameras();
+      _startCamera();
+    } on CameraException catch (e) {
+      debugPrint(e.description);
     }
   }
 
-  Future<void> _postImage() async {
-    if (_image == null || _latitude == null || _longitude == null) return;
+  _startCamera() {
+    if (cameras.isEmpty) {
+      debugPrint('Câmera não foi encontrada');
+    } else {
+      _previewCamera(cameras.first);
+    }
+  }
 
-    final bytes = await _image!.readAsBytes();
-    final base64Image = base64Encode(bytes);
+  _previewCamera(CameraDescription camera) async {
+    final CameraController cameraController = CameraController(
+      camera,
+      ResolutionPreset.high,
+      enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.jpeg,
+    );
+    controller = cameraController;
+
+    try {
+      await cameraController.initialize();
+    } on CameraException catch (e) {
+      debugPrint(e.description);
+    }
+
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  _getLocation() async {
+    position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high);
+  }
+
+  Future<void> _sendImage(String base64Image, Position position) async {
+    const String url = 'https://m2.guilhermesperb.com.br/new';
     final response = await http.post(
-      Uri.parse('http://m2.guilhermesperb.com.br/new'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'usuario': usuario,
+      Uri.parse(url),
+      headers: <String, String>{
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: jsonEncode(<String, dynamic>{
+        'usuario': 'usuario_exemplo', // substitua pelo nome do usuário
         'imagem': base64Image,
-        'latitude': _latitude,
-        'longitude': _longitude,
+        'latitude': position.latitude,
+        'longitude': position.longitude,
       }),
     );
 
     if (response.statusCode == 200) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Image posted successfully')));
-      Navigator.pop(context); // Volta para a tela anterior após postar a imagem
+      debugPrint('Imagem enviada com sucesso');
     } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Failed to post image')));
+      debugPrint('Falha ao enviar imagem: ${response.statusCode}');
     }
-  }
-
-  Future<void> _getCurrentLocation() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      return Future.error('Location services are disabled.');
-    }
-
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        return Future.error('Location permissions are denied');
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      return Future.error(
-          'Location permissions are permanently denied, we cannot request permissions.');
-    }
-
-    Position position = await Geolocator.getCurrentPosition();
-    setState(() {
-      _latitude = position.latitude;
-      _longitude = position.longitude;
-    });
-  }
-
-  @override
-  void dispose() {
-    _cameraController.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    size = MediaQuery.of(context).size;
     return Scaffold(
       appBar: AppBar(
-        title: Text('Capture Image'),
+        title: const Text('Documento Oficial'),
+        backgroundColor: Colors.grey[900],
+        centerTitle: true,
+        elevation: 0,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            _image == null
-                ? _isCameraInitialized
-                    ? CameraPreview(_cameraController)
-                    : CircularProgressIndicator()
-                : Image.file(File(_image!.path)),
-            SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: _getCurrentLocation,
-              child: Text('Get Current Location'),
+      body: Container(
+        color: Colors.grey[900],
+        child: Center(
+          child: _arquivoWidget(),
+        ),
+      ),
+      floatingActionButton: (imagem != null)
+          ? FloatingActionButton.extended(
+              onPressed: () async {
+                if (imagem != null) {
+                  await _getLocation();
+                  final bytes = await File(imagem!.path).readAsBytes();
+                  final base64Image = base64Encode(bytes);
+                  if (position != null) {
+                    await _sendImage(base64Image, position!);
+                  }
+                }
+                Navigator.pop(context);
+              },
+              label: const Text('Finalizar'),
+            )
+          : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  _arquivoWidget() {
+    return SizedBox(
+      width: size!.width - 50,
+      height: size!.height - (size!.height / 3),
+      child: imagem == null
+          ? _cameraPreviewWidget()
+          : Image.file(
+              File(imagem!.path),
+              fit: BoxFit.contain,
             ),
-            ElevatedButton(
-              onPressed: _postImage,
-              child: Text('Post Image'),
-            ),
-          ],
+    );
+  }
+
+  _cameraPreviewWidget() {
+    final CameraController? cameraController = controller;
+
+    if (cameraController == null || !cameraController.value.isInitialized) {
+      return const Text('Widget para Câmera que não está disponível');
+    } else {
+      return Stack(
+        alignment: AlignmentDirectional.bottomCenter,
+        children: [
+          CameraPreview(controller!),
+          _botaoCapturaWidget(),
+        ],
+      );
+    }
+  }
+
+  _botaoCapturaWidget() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: CircleAvatar(
+        radius: 32,
+        backgroundColor: Colors.black.withOpacity(0.5),
+        child: IconButton(
+          icon: const Icon(
+            Icons.camera_alt,
+            color: Colors.white,
+            size: 30,
+          ),
+          onPressed: tirarFoto,
         ),
       ),
     );
+  }
+
+  tirarFoto() async {
+    final CameraController? cameraController = controller;
+
+    if (cameraController != null && cameraController.value.isInitialized) {
+      try {
+        XFile file = await cameraController.takePicture();
+        if (mounted) setState(() => imagem = file);
+      } on CameraException catch (e) {
+        debugPrint(e.description);
+      }
+    }
   }
 }
