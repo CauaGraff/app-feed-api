@@ -70,24 +70,16 @@ class _CameraPageState extends State<CameraPage> {
 
   Future<void> _sendImage(String base64Image, Position position) async {
     const String url = 'https://m2.guilhermesperb.com.br/new';
-    final response = await http.post(
-      Uri.parse(url),
-      headers: <String, String>{
-        'Content-Type': 'application/json; charset=UTF-8',
-      },
-      body: jsonEncode(<String, dynamic>{
-        'usuario': 'usuario_exemplo', // substitua pelo nome do usuário
-        'imagem': base64Image,
-        'latitude': position.latitude,
-        'longitude': position.longitude,
-      }),
-    );
-
-    if (response.statusCode == 200) {
-      debugPrint('Imagem enviada com sucesso');
-    } else {
-      debugPrint('Falha ao enviar imagem: ${response.statusCode}');
-    }
+    final response = await http.post(Uri.parse(url),
+        headers: <String, String>{
+          'Content-Type': 'application/json; charset=UTF-8',
+        },
+        body: jsonEncode(<String, dynamic>{
+          'usuario': 'caua',
+          'imagem': base64Image,
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+        }));
   }
 
   @override
